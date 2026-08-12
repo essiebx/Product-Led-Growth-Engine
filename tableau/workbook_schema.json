@@ -1,0 +1,60 @@
+{
+    "workbook": {
+        "name": "PLG Trial Performance",
+        "version": "1.0",
+        "data_sources": [
+            {
+                "name": "Consolidated_Trial_Data",
+                "type": "postgres",
+                "tables": [
+                    {
+                        "name": "hubspot_leads",
+                        "columns": [
+                            "user_id",
+                            "email_hash",
+                            "cta_first_click_at",
+                            "utm_source"
+                        ]
+                    },
+                    {
+                        "name": "sf_opportunities",
+                        "columns": [
+                            "user_id",
+                            "sf_opportunity_stage",
+                            "created_at"
+                        ]
+                    },
+                    {
+                        "name": "vwo_experiments",
+                        "columns": [
+                            "user_id",
+                            "vwo_experiment_id",
+                            "variant",
+                            "trial_activated_at"
+                        ]
+                    }
+                ],
+                "joins": [
+                    {
+                        "type": "left",
+                        "left_table": "hubspot_leads",
+                        "right_table": "sf_opportunities",
+                        "condition": "hubspot_leads.user_id = sf_opportunities.user_id"
+                    }
+                ]
+            }
+        ],
+        "dashboards": [
+            {
+                "id": "full_funnel_dashboard",
+                "title": "Full-Funnel Trial Visibility",
+                "views": [
+                    "daily_signups",
+                    "trial_activation_rate",
+                    "experiment_performance",
+                    "pql_generation"
+                ]
+            }
+        ]
+    }
+}
