@@ -44,5 +44,5 @@ An end-to-end operational framework designed to track free trial leads from firs
    python scripts/experiment_alerts.py
    ```
 
-## CI/CD and Automation
+## CI/CD and Automation(optional)
 The project includes a GitHub Action (`data-quality-check.yml`) configured to run every day at 02:00 UTC. Ensure to export your API keys into the GitHub Repository Secrets to properly utilize this workflow.
