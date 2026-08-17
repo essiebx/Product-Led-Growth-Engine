@@ -1,0 +1,39 @@
+version: 2
+
+sources:
+  - name: raw_data
+    schema: raw
+    tables:
+      - name: hubspot_leads
+      - name: salesforce_deals
+      - name: vwo_experiments
+
+models:
+  - name: stg_hubspot_leads
+    description: "Cleaned HubSpot leads data."
+    columns:
+      - name: email_hash
+        tests:
+          - not_null
+          - unique
+      - name: acquisition_source
+        tests:
+          - not_null
+
+  - name: stg_salesforce_deals
+    description: "Cleaned Salesforce opportunities data."
+    columns:
+      - name: email_hash
+        tests:
+          - not_null
+          - unique
+
+  - name: stg_vwo_experiments
+    description: "VWO experiment assignment data."
+    columns:
+      - name: email_hash
+        tests:
+          - not_null
+      - name: experiment_id
+        tests:
+          - not_null
