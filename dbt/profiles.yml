@@ -3,5 +3,5 @@ plg_engine:
   outputs:
     dev:
       type: duckdb
-      path: plg_engine.duckdb
-      threads: 4
+      path: "../plg_engine.duckdb"  # Must match the filename in your Python script
+      schema: main
