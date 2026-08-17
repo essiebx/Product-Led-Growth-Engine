@@ -1,0 +1,7 @@
+plg_engine:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: plg_engine.duckdb
+      threads: 4

@@ -46,3 +46,16 @@ venv.bak/
 # OS
 .DS_Store
 Thumbs.db
+
+# dbt build artifacts
+dbt/target/
+dbt/.user.yml
+
+# DuckDB database file
+*.duckdb
+
+# Generated data exports
+data/tableau_export.csv
+
+# pytest cache
+.pytest_cache/

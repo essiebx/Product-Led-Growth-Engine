@@ -24,6 +24,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Run Tests
+        run: python -m pytest tests/
+
+      - name: Ingest Data to DuckDB
+        run: python scripts/ingest_to_duckdb.py
+
+      - name: Run dbt Pipeline
+        run: |
+          dbt run --profiles-dir dbt --project-dir dbt
+          dbt test --profiles-dir dbt --project-dir dbt
+
+      - name: Export Data for Tableau
+        run: python scripts/export_to_tableau.py
+
       - name: Run Data Reconciliation
         env:
           HUBSPOT_API_KEY: ${{ secrets.HUBSPOT_API_KEY }}
@@ -36,6 +50,5 @@ jobs:
         env:
           VWO_API_KEY: ${{ secrets.VWO_API_KEY }}
           VWO_ACCOUNT_ID: ${{ secrets.VWO_ACCOUNT_ID }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: python scripts/experiment_alerts.py

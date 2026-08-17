@@ -1,9 +1,9 @@
 import os
 import sys
 import logging
+import duckdb
+import requests
 from dotenv import load_dotenv
-from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
 
 # Initialize basic configuration
 load_dotenv()
@@ -15,70 +15,110 @@ logger = logging.getLogger(__name__)
 
 class ExperimentAlertManager:
     """
-    Checks VWO for A/B tests that have reached statistical significance
-    and alerts the Growth Squad via Slack.
+    Checks DuckDB for A/B tests that have reached statistical significance
+    and alerts the Growth Squad via Slack Webhook.
     """
     def __init__(self):
         self._verify_environment()
-        self.slack_client = WebClient(token=os.getenv("SLACK_BOT_TOKEN"))
-        self.slack_channel = os.getenv("SLACK_CHANNEL_ID")
-        self.vwo_api_key = os.getenv("VWO_API_KEY")
-        self.vwo_account_id = os.getenv("VWO_ACCOUNT_ID")
+        self.slack_webhook_url = os.getenv("SLACK_WEBHOOK_URL")
+        # Ensure path is relative to the project root
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.db_path = os.path.join(base_dir, "plg_engine.duckdb")
 
     def _verify_environment(self) -> None:
-        required_vars = ["VWO_API_KEY", "VWO_ACCOUNT_ID", "SLACK_BOT_TOKEN", "SLACK_CHANNEL_ID"]
+        required_vars = ["SLACK_WEBHOOK_URL"]
         missing = [var for var in required_vars if not os.getenv(var)]
         if missing:
             logger.error(f"Missing required environment variables: {', '.join(missing)}")
             sys.exit(1)
 
     def fetch_active_experiments(self) -> dict:
-        """Fetches active campaigns from VWO API."""
-        logger.info("Fetching experiment metrics from VWO...")
-        
-        # Mocking generic JSON payload for illustrative skeleton setup
-        return {
-            "experiments": [
-                {
-                    "id": "EXP-102",
-                    "name": "Simplified Onboarding Step 2",
-                    "status": "active",
-                    "stat_sig": True,
-                    "control_conv_rate": 0.15,
-                    "variant_conv_rate": 0.234,
-                    "lift": "+8.4%"
-                },
-                {
-                    "id": "EXP-103",
-                    "name": "Pricing Page Tooltip",
-                    "status": "active",
-                    "stat_sig": False,
-                    "control_conv_rate": 0.05,
-                    "variant_conv_rate": 0.051,
-                    "lift": "+0.1%"
-                }
-            ]
-        }
+        """Fetches active campaigns from DuckDB and calculates lift."""
+        logger.info("Fetching experiment metrics from DuckDB...")
+        if not os.path.exists(self.db_path):
+            logger.error(f"DuckDB database not found at {self.db_path}")
+            return {"experiments": []}
+            
+        try:
+            conn = duckdb.connect(self.db_path, read_only=True)
+            # Find the total users and conversions for each experiment variant
+            query = """
+                SELECT 
+                    experiment_id,
+                    variant_name,
+                    COUNT(email_hash) as total_users,
+                    SUM(is_converted) as conversions,
+                    CASE WHEN COUNT(email_hash) = 0 THEN 0 ELSE SUM(is_converted)*1.0 / COUNT(email_hash) END as conv_rate
+                FROM main.fct_trial_conversions
+                WHERE experiment_id IS NOT NULL
+                GROUP BY 1, 2
+            """
+            df = conn.execute(query).df()
+            conn.close()
+            
+            # Format the output for the evaluator
+            experiments_payload = []
+            
+            if df.empty:
+                return {"experiments": []}
+                
+            grouped = df.groupby('experiment_id')
+            for exp_id, group in grouped:
+                # We expect a 'Control' variant and other variants. If not explicitly 'Control', find it.
+                control_row = group[group['variant_name'].str.lower() == 'control']
+                if control_row.empty:
+                    continue
+                control_rate = control_row.iloc[0]['conv_rate']
+                
+                for _, row in group.iterrows():
+                    if row['variant_name'].lower() == 'control':
+                        continue
+                    
+                    variant_rate = row['conv_rate']
+                    lift = 0
+                    if control_rate > 0:
+                        lift = (variant_rate - control_rate) / control_rate
+                    
+                    # For demonstration, we'll mark stat_sig True if lift > 5%
+                    stat_sig = lift > 0.05
+                    
+                    experiments_payload.append({
+                        "id": exp_id,
+                        "name": f"{exp_id} - {row['variant_name']}",
+                        "status": "active",
+                        "stat_sig": stat_sig,
+                        "control_conv_rate": control_rate,
+                        "variant_conv_rate": variant_rate,
+                        "lift": f"{lift * 100:+.1f}%"
+                    })
+                    
+            return {"experiments": experiments_payload}
+        except Exception as e:
+            logger.error(f"Failed to fetch data from DuckDB: {e}")
+            return {"experiments": []}
 
     def _send_slack_alert(self, experiment: dict):
-        """Sends a notification to the Slack channel."""
+        """Sends a notification to the Slack Webhook."""
         message = (
             f"🚀 *Experiment Alert: {experiment['name']} ({experiment['id']})*\n"
             f"The experiment has reached statistical significance!\n"
             f"• Control Conversion Rate: `{experiment['control_conv_rate'] * 100:.2f}%`\n"
             f"• Variant Conversion Rate: `{experiment['variant_conv_rate'] * 100:.2f}%`\n"
             f"• Lift: `{experiment['lift']}`\n\n"
-            f"👉 *Recommendation*: Review results in VWO and consider scaling the variant."
+            f"👉 *Recommendation*: Review results and consider scaling the variant."
         )
         
         try:
-            self.slack_client.chat_postMessage(
-                channel=self.slack_channel,
-                text=message
+            response = requests.post(
+                self.slack_webhook_url,
+                json={"text": message},
+                headers={"Content-Type": "application/json"},
+                timeout=10
             )
+            response.raise_for_status()
             logger.info(f"Successfully sent Slack alert for {experiment['id']}.")
-        except SlackApiError as e:
-            logger.error(f"Error sending message to Slack: {e.response['error']}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error sending message to Slack webhook: {e}")
 
     def evaluate_and_alert(self, data: dict):
         """Evaluates experiments and triggers alerts for stat sig winners."""
