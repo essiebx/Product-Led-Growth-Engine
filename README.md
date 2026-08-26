@@ -1,4 +1,4 @@
-# PLG Free Trial Optimization & Experimentation Engine
+# PLG(product led growth) Trial Optimization & Experimentation Engine
 
 An end-to-end operational framework designed to track free trial leads from first CTA click to Product Qualified Lead (PQL) status, monitor live A/B experiments, and automate data hygiene checks across CRM, product, and analytics stacks.
 
